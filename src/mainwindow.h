@@ -30,6 +30,7 @@ private slots:
     void onCancelClicked(const QString& drive);
     void onSettingsClicked();
     void updateStatusBar();
+    void refreshPendingList();
 
 private:
     void allocateCard(const QString& drive, const USBDevice& dev);
@@ -43,6 +44,7 @@ private:
     FTPUploader* m_ftpUploader = nullptr;
     LogPanel* m_logPanel = nullptr;
     QLabel* m_ftpStatusLabel = nullptr;
+    QTableWidget* m_pendingList = nullptr;
 };
 
 #endif // MAINWINDOW_H

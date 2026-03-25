@@ -15,6 +15,8 @@
 #include <QLabel>
 #include <QPushButton>
 #include <QStatusBar>
+#include <QTableWidget>
+#include <QHeaderView>
 #include <QScrollArea>
 #include <QDebug>
 
@@ -71,6 +73,28 @@ MainWindow::MainWindow(QWidget* parent)
     }
     scroll->setWidget(cardsWidget);
     vl->addWidget(scroll, 1);
+
+    // ── Pending Files List ────────────────────────────────
+    QGroupBox* pendingGrp = new QGroupBox("📋 待上传文件");
+    pendingGrp->setStyleSheet(R"(
+        QGroupBox { color: #e0e0e0; border: 1px solid #4a4a4a; border-radius: 4px; margin-top: 8px; }
+        QGroupBox::title { subcontrol-origin: margin; left: 10px; padding: 0 4px; }
+    )");
+    QVBoxLayout* pendingVl = new QVBoxLayout(pendingGrp);
+    m_pendingList = new QTableWidget();
+    m_pendingList->setColumnCount(4);
+    m_pendingList->setHorizontalHeaderLabels({"盘符", "文件名", "大小", "状态"});
+    m_pendingList->setColumnWidth(0, 60);
+    m_pendingList->setColumnWidth(1, 400);
+    m_pendingList->setColumnWidth(2, 100);
+    m_pendingList->setColumnWidth(3, 80);
+    m_pendingList->setMaximumHeight(120);
+    m_pendingList->setStyleSheet(R"(
+        QTableWidget { background: #2d2d2d; color: #d4d4d4; gridline-color: #4a4a4a; }
+        QHeaderView::section { background: #2d2d2d; color: #d4d4d4; border: 1px solid #4a4a4a; }
+    )");
+    pendingVl->addWidget(m_pendingList);
+    vl->addWidget(pendingGrp);
 
     // ── Log Panel ────────────────────────────────────────
     m_logPanel = new LogPanel();
@@ -160,6 +184,12 @@ void MainWindow::onCopyProgress(const QString& drive, int done, int total, const
     USBCard* card = m_driveToCard.value(drive, nullptr);
     if (card) {
         card->updateProgress(done, total, task.progress);
+        // Show current file name
+        QString fname = task.srcPath;
+        int p = fname.lastIndexOf('/');
+        if (p < 0) p = fname.lastIndexOf('\\');
+        if (p >= 0) fname = fname.mid(p + 1);
+        card->setCurrentFile(fname);
         if (task.status == "copied") {
             m_logPanel->appendInfo("复制完成: " + task.srcPath);
         }
@@ -167,6 +197,8 @@ void MainWindow::onCopyProgress(const QString& drive, int done, int total, const
 }
 
 void MainWindow::onCopyDone(const QString& drive, const QList<CopyTask>& tasks) {
+    // Refresh pending list with all copied files
+    refreshPendingList();
     USBCard* card = m_driveToCard.value(drive, nullptr);
     if (!card) return;
 
@@ -181,6 +213,7 @@ void MainWindow::onCopyDone(const QString& drive, const QList<CopyTask>& tasks) 
 }
 
 void MainWindow::onUploadDone(const UploadTask& task) {
+    refreshPendingList();
     if (task.status == "uploaded") {
         m_logPanel->appendInfo("上传成功: " + task.localPath);
     } else if (task.status == "error") {
@@ -236,8 +269,63 @@ void MainWindow::onSettingsClicked() {
     dlg.exec();
 }
 
+void MainWindow::refreshPendingList() {
+    if (!m_pendingList) return;
+    Config& cfg = Config::instance();
+    cfg.load();
+
+    m_pendingList->setRowCount(0);
+    QList<FileRecord> pending = FileRecordDB::instance().pendingRecords();
+
+    for (const FileRecord& r : pending) {
+        int row = m_pendingList->rowCount();
+        m_pendingList->insertRow(row);
+
+        // Drive
+        QTableWidgetItem* driveItem = new QTableWidgetItem(r.usbDrive);
+        driveItem->setForeground(QColor("#FF9800"));
+        m_pendingList->setItem(row, 0, driveItem);
+
+        // File name (extract just filename from path)
+        QString fname = r.filePath;
+        int slashPos = fname.lastIndexOf('/');
+        if (slashPos < 0) slashPos = fname.lastIndexOf('\\');
+        if (slashPos >= 0) fname = fname.mid(slashPos + 1);
+        QTableWidgetItem* nameItem = new QTableWidgetItem(fname);
+        nameItem->setForeground(QColor("#d4d4d4"));
+        m_pendingList->setItem(row, 1, nameItem);
+
+        // Size
+        QString sizeStr;
+        qint64 sz = r.fileSize;
+        if (sz >= 1024*1024*1024) sizeStr = QString::number(sz/1024.0/1024/1024,'f',1)+"GB";
+        else if (sz >= 1024*1024) sizeStr = QString::number(sz/1024.0/1024,'f',1)+"MB";
+        else if (sz >= 1024) sizeStr = QString::number(sz/1024.0,'f',1)+"KB";
+        else sizeStr = QString::number(sz)+"B";
+        m_pendingList->setItem(row, 2, new QTableWidgetItem(sizeStr));
+
+        // Status
+        QString statusText;
+        QColor statusColor;
+        if (r.status == "pending") { statusText = "待上传"; statusColor = QColor("#FF9800"); }
+        else if (r.status == "copying") { statusText = "复制中"; statusColor = QColor("#2196F3"); }
+        else if (r.status == "copied") { statusText = "已复制"; statusColor = QColor("#4CAF50"); }
+        else if (r.status == "uploading") { statusText = "上传中"; statusColor = QColor("#2196F3"); }
+        else if (r.status == "uploaded") { statusText = "已上传"; statusColor = QColor("#4CAF50"); }
+        else if (r.status == "error") { statusText = "错误"; statusColor = QColor("#F44336"); }
+        else { statusText = r.status; statusColor = QColor("#9e9e9e"); }
+        QTableWidgetItem* statusItem = new QTableWidgetItem(statusText);
+        statusItem->setForeground(statusColor);
+        m_pendingList->setItem(row, 3, statusItem);
+    }
+}
+
 void MainWindow::updateStatusBar() {
-    auto pending = FileRecordDB::instance().pendingCountAndSize();
+    // Only refresh pending list every 10 seconds to avoid DB overhead
+    static int tick = 0;
+    if (++tick % 5 == 0) {
+        refreshPendingList();
+    }
     auto uploaded = FileRecordDB::instance().uploadedCountAndSize();
     int queue = m_ftpUploader ? m_ftpUploader->queueSize() : 0;
 

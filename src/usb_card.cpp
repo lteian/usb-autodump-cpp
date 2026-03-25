@@ -1,4 +1,4 @@
-#include "usd_card.h"
+#include "usb_card.h"
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QStyle>
@@ -66,6 +66,13 @@ USBCard::USBCard(QWidget* parent)
     m_countLabel->setVisible(false);
     vl->addWidget(m_countLabel);
 
+    m_currentFileLabel = new QLabel("");
+    m_currentFileLabel->setStyleSheet("color: #808080; font-size: 10px;");
+    m_currentFileLabel->setAlignment(Qt::AlignCenter);
+    m_currentFileLabel->setVisible(false);
+    m_currentFileLabel->setWordWrap(true);
+    vl->addWidget(m_currentFileLabel);
+
     // Buttons
     QHBoxLayout* btnLayout = new QHBoxLayout();
     m_formatBtn = new QPushButton("格式化");
@@ -103,6 +110,8 @@ void USBCard::setStatus(const QString& s) {
     m_formatBtn->setVisible(false);
     m_ejectBtn->setVisible(false);
     m_countLabel->setVisible(false);
+    m_currentFileLabel->setVisible(false);
+    m_currentFileLabel->setText("");
 
     if (s == "idle") {
         m_statusLabel->setText("空闲");
@@ -128,6 +137,8 @@ void USBCard::updateProgress(int done, int total, double filePct) {
     m_progress->setMaximum(total);
     m_progress->setValue(done);
     m_countLabel->setText(QString("%1/%2 (%3%)").arg(done).arg(total).arg(int(filePct)));
+    m_countLabel->setVisible(true);
+    m_currentFileLabel->setVisible(true);
 }
 
 void USBCard::clear() {
@@ -139,9 +150,17 @@ void USBCard::clear() {
     m_progress->setVisible(false);
     m_progress->setValue(0);
     m_countLabel->setVisible(false);
+    m_countLabel->setText("");
+    m_currentFileLabel->setVisible(false);
+    m_currentFileLabel->setText("");
     m_formatBtn->setVisible(false);
     m_ejectBtn->setVisible(false);
     m_cancelBtn->setVisible(false);
+}
+
+void USBCard::setCurrentFile(const QString& filename) {
+    m_currentFileLabel->setText(filename);
+    m_currentFileLabel->setToolTip(filename);
 }
 
 QString USBCard::fmtSize(qint64 b) {

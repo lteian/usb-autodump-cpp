@@ -64,6 +64,7 @@ public:
     void setDrive(const QString& letter, const QString& label, qint64 total, qint64 used);
     void setStatus(const QString& s); // idle/copying/done/formatting
     void updateProgress(int done, int total, double filePct);
+    void setCurrentFile(const QString& filename);
     void clear();
 
 signals:
@@ -79,6 +80,7 @@ private:
     QLabel* m_sizeLabel = nullptr;
     QProgressBar* m_progress = nullptr;
     QLabel* m_countLabel = nullptr;
+    QLabel* m_currentFileLabel = nullptr;
     QPushButton* m_formatBtn = nullptr;
     QPushButton* m_ejectBtn = nullptr;
     QPushButton* m_cancelBtn = nullptr;
